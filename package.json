@@ -47,5 +47,11 @@
     "vite": "^3",
     "vite-plugin-dts": "^1",
     "vitest": "^0.23"
+  },
+  "dependencies": {
+    "image-js": "^0.35.3",
+    "ml-matrix": "^6.10.4",
+    "radians-degrees": "^1.0.0",
+    "transformation-matrix": "^2.14.0"
   }
 }
