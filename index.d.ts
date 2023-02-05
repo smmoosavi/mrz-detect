@@ -1,5 +1,6 @@
-import { CropOptions } from 'image-js';
 import { default as Image_2 } from 'image-js';
+
+export declare type Boundary = Point[];
 
 export declare function getMrz(
   image: Image_2,
@@ -27,18 +28,23 @@ export declare interface GetMrzDebugResult {
   close2?: Image_2;
   erode?: Image_2;
   painted?: Image_2;
-  crop?: Image_2;
-  cropBoundary?: CropOptions;
+  crop: Image_2;
+  cropBoundary: Boundary | null;
 }
 
 export declare interface GetMrzResult {
   crop: Image_2;
-  cropBoundary: CropOptions;
+  cropBoundary: Boundary | null;
 }
 
 export declare interface MrzOptions<Debug = false> {
   debug?: Debug;
   out?: Partial<GetMrzDebugResult>;
+}
+
+export declare interface Point {
+  x: number;
+  y: number;
 }
 
 export {};

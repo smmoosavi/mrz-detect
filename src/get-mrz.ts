@@ -7,11 +7,13 @@ import radiansDegrees from 'radians-degrees';
 import { Matrix } from 'ml-matrix';
 
 import {
-  rotateDEG,
-  translate,
-  transform,
   applyToPoint,
   applyToPoints,
+  rotateDEG,
+  transform,
+  inverse,
+  translate,
+  Matrix as TransformationMatrix,
 } from 'transformation-matrix';
 import Image, {
   CropOptions,
@@ -19,6 +21,8 @@ import Image, {
   InterpolationAlgorithm,
   ThresholdAlgorithm,
 } from 'image-js';
+
+import { Boundary, Size } from './types';
 
 const rectKernel = getRectKernel(9, 5);
 const sqKernel = getRectKernel(19, 19);
@@ -39,12 +43,13 @@ export interface GetMrzDebugResult {
   close2?: Image;
   erode?: Image;
   painted?: Image;
-  crop?: Image;
-  cropBoundary?: CropOptions;
+  crop: Image;
+  cropBoundary: Boundary | null;
 }
+
 export interface GetMrzResult {
   crop: Image;
-  cropBoundary: CropOptions;
+  cropBoundary: Boundary | null;
 }
 
 export function getMrz(image: Image, options?: MrzOptions): GetMrzResult;
@@ -180,6 +185,7 @@ function internalGetMrz(
     images.painted = painted;
   }
 
+  let transforms = [];
   let toCrop = original;
 
   const mrzRoi = rois[0];
@@ -205,6 +211,7 @@ function internalGetMrz(
       height: (mrzRoi.roi.maxY - mrzRoi.roi.minY) * originalToTreatedRatio,
     };
     if (regionTransform) {
+      transforms.push(regionTransform);
       const rotated = applyToPoint(regionTransform, mrzCropOptions);
       const tmp = mrzCropOptions.width;
       mrzCropOptions.width = mrzCropOptions.height;
@@ -220,6 +227,7 @@ function internalGetMrz(
     }));
 
     if (regionTransform) {
+      transforms.push(regionTransform);
       hull = applyToPoints(regionTransform, hull);
     }
 
@@ -236,6 +244,7 @@ function internalGetMrz(
       getRotationAround(beforeRotate, angle),
     );
 
+    transforms.push(transformation);
     const rotatedHull = applyToPoints(transformation, hull);
     let minX = Infinity;
     let minY = Infinity;
@@ -265,16 +274,23 @@ function internalGetMrz(
   if (mrzCropOptions.y < toCrop.height / 2) {
     // image is upside down, turn it back
     toCrop = toCrop.rotate(180);
-    const newXY = applyToPoint(getRotationAround(toCrop, 180), mrzCropOptions);
+    let transform180 = getRotationAround(toCrop, 180);
+    transforms.push(transform180);
+    const newXY = applyToPoint(transform180, mrzCropOptions);
     mrzCropOptions.x = newXY.x - mrzCropOptions.width;
     mrzCropOptions.y = newXY.y - mrzCropOptions.height;
   }
 
   let cropped = toCrop.crop(mrzCropOptions);
+  let boundary = getBoundary(transforms, mrzCropOptions);
   images.crop = cropped;
-  images.cropBoundary = mrzCropOptions;
+  images.cropBoundary = boundary;
 
-  return images;
+  return {
+    ...images,
+    crop: cropped,
+    cropBoundary: boundary,
+  };
 }
 
 function getRectKernel(w: number, h: number) {
@@ -299,11 +315,39 @@ function getDiffVector(p1: number[], p2: number[]) {
   return dv;
 }
 
-function getRotationAround(image: Image, angle: number) {
+function getRotationAround(image: Size, angle: number) {
   const middle = { x: image.width / 2, y: image.height / 2 };
   return transform(
     translate(middle.x, middle.y),
     rotateDEG(angle),
     translate(-middle.x, -middle.y),
   );
+}
+
+function getBoundary(
+  transforms: TransformationMatrix[],
+  crop: CropOptions,
+): Boundary | null {
+  let { x = 0, y = 0, width = 0, height = 0 } = crop;
+  if (width === 0 || height === 0) {
+    return null;
+  }
+  let x0 = x;
+  let y0 = y;
+  let x1 = x + width;
+  let y1 = y + height;
+  const points = [
+    { x: x0, y: y0 },
+    { x: x1, y: y0 },
+    { x: x1, y: y1 },
+    { x: x0, y: y1 },
+  ];
+
+  // apply transforms in reverse order
+  let res = points;
+  transforms.reverse().forEach((t) => {
+    res = applyToPoints(inverse(t), res);
+  });
+
+  return res;
 }
